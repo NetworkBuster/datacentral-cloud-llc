@@ -4,7 +4,12 @@ import os
 import sys
 from pathlib import Path
 
+# Customer database – path is resolved relative to repo root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from core.customer_db import CustomerDatabase
+
 app = Flask(__name__)
+_customer_db = CustomerDatabase(Path(__file__).parent.parent / "data" / "customers")
 
 # Flash Commands Definition
 FLASH_COMMANDS = {
@@ -91,6 +96,68 @@ def distro_info():
         })
     
     return jsonify({"status": "success", "distros": sorted(distros, key=lambda x: x['created'], reverse=True)})
+
+@app.route('/customers', methods=['GET'])
+def list_customers():
+    """Return all customer records as JSON."""
+    limit = int(request.args.get('limit', 100))
+    customers = _customer_db.list_all(limit=limit)
+    return jsonify({
+        "status": "success",
+        "total": _customer_db.count(),
+        "customers": [c.to_dict() for c in customers],
+    })
+
+
+@app.route('/customers/add', methods=['POST'])
+def add_customer():
+    """
+    Manually add a customer record.
+    Expected JSON body: { "name": "...", "source": "...", "log_content": "...", "metadata": {} }
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"status": "error", "message": "name is required"}), 400
+    customer = _customer_db.add(
+        name=name,
+        source=body.get("source", "manual"),
+        log_content=body.get("log_content", ""),
+        metadata=body.get("metadata", {}),
+    )
+    return jsonify({"status": "success", "customer": customer.to_dict()}), 201
+
+
+@app.route('/customers/ingest', methods=['POST'])
+def ingest_log():
+    """
+    Ingest a raw log line as a new customer record.
+    Expected JSON body: { "filepath": "...", "line_number": 1, "content": "...", "level": "info", "timestamp": "..." }
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    content = (body.get("content") or "").strip()
+    if not content:
+        return jsonify({"status": "error", "message": "content is required"}), 400
+
+    from datetime import datetime as _dt
+    from core.log_monitor import LogEntry
+
+    ts_raw = body.get("timestamp")
+    try:
+        ts = _dt.fromisoformat(ts_raw) if ts_raw else _dt.now()
+    except (ValueError, TypeError):
+        ts = _dt.now()
+
+    entry = LogEntry(
+        filepath=body.get("filepath", "manual"),
+        line_number=int(body.get("line_number", 0)),
+        content=content,
+        timestamp=ts,
+        level=body.get("level"),
+    )
+    customer = _customer_db.ingest_log_entry(entry)
+    return jsonify({"status": "success", "customer": customer.to_dict()}), 201
+
 
 if __name__ == "__main__":
     # Unified Certificate Configuration
