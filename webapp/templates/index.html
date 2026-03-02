@@ -6,21 +6,43 @@
     <title>NetworkBuster FlashCommands</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a1a2e; color: #e1e1e1; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: auto; }
+        .container { max-width: 900px; margin: auto; }
         h1 { color: #00ff88; text-align: center; }
+        h2.section-title { color: #00ff88; border-bottom: 1px solid #16213e; padding-bottom: 6px; margin-top: 30px; }
         .command-card { background: #16213e; border-radius: 8px; padding: 15px; margin-bottom: 15px; border-left: 4px solid #00ff88; }
         .command-card h2 { margin-top: 0; font-size: 1.2em; }
         .btn { background: #00ff88; color: #1a1a2e; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn:hover { background: #00cc6a; }
+        .btn-sm { padding: 6px 14px; font-size: 0.85em; }
         #output { background: #0f3460; padding: 15px; border-radius: 8px; font-family: 'Consolas', monospace; white-space: pre-wrap; margin-top: 20px; min-height: 100px; overflow-y: auto; max-height: 400px; border: 1px solid #16213e; }
-        .spinner { display: none; margin-left: 10px; }
+        /* Customer section */
+        #customer-section { margin-top: 30px; }
+        #customer-count { color: #95a5a6; font-size: 0.9em; margin-bottom: 10px; }
+        #customer-table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+        th { background: #0f3460; color: #00ff88; padding: 8px 10px; text-align: left; }
+        td { background: #16213e; padding: 7px 10px; border-bottom: 1px solid #0f3460; word-break: break-all; }
+        tr:hover td { background: #1e2e50; }
+        .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 0.78em; font-weight: bold; }
+        .badge-error   { background: #e94560; color: #fff; }
+        .badge-warning { background: #f39c12; color: #1a1a2e; }
+        .badge-info    { background: #3498db; color: #fff; }
+        .badge-debug   { background: #95a5a6; color: #1a1a2e; }
+        /* Ingest form */
+        #ingest-form { background: #16213e; border-radius: 8px; padding: 15px; margin-top: 15px; border-left: 4px solid #3498db; }
+        #ingest-form input, #ingest-form textarea {
+            width: 100%; box-sizing: border-box; background: #0f3460; border: 1px solid #3498db;
+            color: #e1e1e1; padding: 7px; border-radius: 4px; margin-bottom: 8px; font-family: 'Consolas', monospace;
+        }
+        #ingest-form label { font-size: 0.85em; color: #95a5a6; }
+        #ingest-status { margin-top: 8px; font-size: 0.88em; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚀 NetworkBuster WebApp</h1>
         <p style="text-align: center;">Flash Commands Control Center</p>
-        
+
         <div id="commands">
             {% for cmd_id, info in commands.items() %}
             <div class="command-card">
@@ -35,26 +57,150 @@
             <h3>Execution Output:</h3>
             <div id="output">Ready...</div>
         </div>
+
+        <!-- ── Customer Dashboard ───────────────────────────────────── -->
+        <div id="customer-section">
+            <h2 class="section-title">👤 Customer Database</h2>
+            <p id="customer-count">Loading…</p>
+            <button class="btn btn-sm" onclick="loadCustomers()">Refresh</button>
+
+            <div id="customer-table-wrap">
+                <table id="customer-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Source</th>
+                            <th>Log Content</th>
+                            <th>Level</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customer-tbody">
+                        <tr><td colspan="6" style="text-align:center;color:#95a5a6;">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Ingest a log line manually -->
+            <div id="ingest-form">
+                <strong>Ingest Log Entry as New Customer</strong>
+                <br><br>
+                <label>Log Content (required)</label>
+                <textarea id="ing-content" rows="2" placeholder="e.g. user=alice logged in from 192.168.1.10"></textarea>
+                <label>Source / File Path</label>
+                <input id="ing-source" type="text" placeholder="/var/log/app.log">
+                <label>Level</label>
+                <input id="ing-level" type="text" placeholder="info / warning / error">
+                <button class="btn btn-sm" onclick="ingestLog()">Ingest →</button>
+                <div id="ingest-status"></div>
+            </div>
+        </div>
     </div>
 
     <script>
+        const LOG_PREVIEW_LENGTH = 80;
         function runCommand(cmdId) {
             const output = document.getElementById('output');
             output.innerText = 'Executing ' + cmdId + '...';
-            
             fetch('/execute/' + cmdId, { method: 'POST' })
-                .then(response => response.json())
+                .then(r => r.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        output.innerHTML = '<span style="color: #00ff88;">[SUCCESS]</span>\n' + data.stdout;
+                        output.innerHTML = '<span style="color:#00ff88;">[SUCCESS]</span>\n' + data.stdout;
                     } else {
-                        output.innerHTML = '<span style="color: #ff4d4d;">[ERROR]</span>\n' + (data.stderr || data.message || 'Unknown error');
+                        output.innerHTML = '<span style="color:#ff4d4d;">[ERROR]</span>\n' + (data.stderr || data.message || 'Unknown error');
                     }
                 })
-                .catch(error => {
-                    output.innerHTML = '<span style="color: #ff4d4d;">[EXCEPTION]</span>\n' + error;
+                .catch(err => {
+                    output.innerHTML = '<span style="color:#ff4d4d;">[EXCEPTION]</span>\n' + err;
                 });
         }
+
+        function levelBadge(level) {
+            if (!level) return '';
+            const cls = 'badge badge-' + level.toLowerCase();
+            return '<span class="' + cls + '">' + level + '</span>';
+        }
+
+        function loadCustomers() {
+            fetch('/customers')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('customer-count').innerText =
+                        'Total customers in database: ' + data.total;
+                    const tbody = document.getElementById('customer-tbody');
+                    if (!data.customers || data.customers.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#95a5a6;">No customers yet. Ingest a log entry below.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = data.customers.map(c => {
+                        const level = (c.metadata && c.metadata.level) ? c.metadata.level : '';
+                        const created = formatTimestamp(c.created_at);
+                        return '<tr>' +
+                            '<td style="font-size:0.75em;color:#95a5a6;">' + c.id + '</td>' +
+                            '<td><strong>' + escHtml(c.name) + '</strong></td>' +
+                            '<td style="font-size:0.8em;">' + escHtml(c.source) + '</td>' +
+                            '<td style="font-size:0.8em;">' + escHtml(c.log_content.substring(0, LOG_PREVIEW_LENGTH)) + '</td>' +
+                            '<td>' + levelBadge(level) + '</td>' +
+                            '<td style="font-size:0.8em;white-space:nowrap;">' + created + '</td>' +
+                            '</tr>';
+                    }).join('');
+                })
+                .catch(() => {
+                    document.getElementById('customer-count').innerText = 'Failed to load customers.';
+                });
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function formatTimestamp(raw) {
+            if (!raw) return '';
+            try {
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return escHtml(raw);
+                return d.toISOString().replace('T', ' ').split('.')[0];
+            } catch (e) {
+                return escHtml(String(raw));
+            }
+        }
+
+        function ingestLog() {
+            const content = document.getElementById('ing-content').value.trim();
+            const source  = document.getElementById('ing-source').value.trim() || 'manual';
+            const level   = document.getElementById('ing-level').value.trim() || null;
+            const status  = document.getElementById('ingest-status');
+
+            if (!content) { status.innerHTML = '<span style="color:#ff4d4d;">Log content is required.</span>'; return; }
+
+            status.innerHTML = 'Sending…';
+            fetch('/customers/ingest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content, filepath: source, level })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    status.innerHTML = '<span style="color:#00ff88;">✔ Customer created: ' + escHtml(data.customer.name) + ' (' + data.customer.id + ')</span>';
+                    document.getElementById('ing-content').value = '';
+                    loadCustomers();
+                } else {
+                    status.innerHTML = '<span style="color:#ff4d4d;">Error: ' + escHtml(data.message) + '</span>';
+                }
+            })
+            .catch(err => { status.innerHTML = '<span style="color:#ff4d4d;">' + err + '</span>'; });
+        }
+
+        // Load customers on page load
+        loadCustomers();
     </script>
 </body>
 </html>
+

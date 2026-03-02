@@ -14,10 +14,11 @@ from collections import deque
 
 try:
     from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent
+    from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
+    FileSystemEventHandler = object  # stub so class definition below is valid
 
 
 @dataclass
