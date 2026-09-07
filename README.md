@@ -2,6 +2,8 @@
 
 🌐 **Visit us at [networkbuster.com](https://networkbuster.com)**
 
+🌐 **Visit us at [networkbuster.com](https://networkbuster.com)**
+
 ## Features
 This repository contains a frontend and a Node.js backend, designed to run together.
 The backend acts as a proxy, handling Google Cloud API calls.
